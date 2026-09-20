@@ -3,6 +3,7 @@ import sqlServer from '@/service/sql';
 import * as monaco from 'monaco-editor';
 import { SqlStatement } from '@/typings/sqlParser';
 import { osNow } from '@/utils';
+import { protectSqlParametersForFormatting } from '@/utils/sql/sqlParameters';
 /**
  * Format SQL.
  */
@@ -14,6 +15,7 @@ import { osNow } from '@/utils';
  * @returns Formatted SQL.
  */
 export function formatSql(sql: string, dbType?: DatabaseTypeCode): Promise<string> {
+  const protectedSql = protectSqlParametersForFormatting(sql);
   // const supportedLanguages = new Set(Object.values(DatabaseTypeCode).map((value) => value.toLowerCase()));
   // const language = dbType?.toLowerCase();
   // const sqlLang = language && supportedLanguages.has(language) ? language : 'sql';
@@ -28,8 +30,8 @@ export function formatSql(sql: string, dbType?: DatabaseTypeCode): Promise<strin
   // }
   return new Promise((resolve) => {
     sqlServer
-      .sqlFormat({ sql, dbType })
-      .then(resolve)
+      .sqlFormat({ sql: protectedSql.sql, dbType })
+      .then((formattedSql) => resolve(protectedSql.restore(formattedSql)))
       .catch((error) => {
         console.error('Server-side SQL formatting error:', error);
         resolve(sql);
@@ -72,7 +74,7 @@ export function findNearestSQL(curPosition: monaco.Position, sqlStatementList: S
       continue;
     }
 
-      // Use -1 when the cursor is inside the SQL statement.
+    // Use -1 when the cursor is inside the SQL statement.
     if (findSqlStatement(curPosition, sqlStatementList)) {
       distance = -1;
     } else {
@@ -82,13 +84,13 @@ export function findNearestSQL(curPosition: monaco.Position, sqlStatementList: S
       distance = Math.min(distanceToStart, distanceToEnd);
     }
 
-      // Update the nearest SQL statement.
+    // Update the nearest SQL statement.
     if (distance < minDistance) {
       minDistance = distance;
       nearestStatement = statement;
     }
 
-      // Return immediately when the statement containing the cursor is found.
+    // Return immediately when the statement containing the cursor is found.
     if (distance === -1) {
       return statement;
     }

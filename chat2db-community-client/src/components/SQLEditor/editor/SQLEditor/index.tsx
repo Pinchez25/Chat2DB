@@ -22,6 +22,7 @@ import {
 import * as monaco from 'monaco-editor';
 import { ISqlEditorHintVO, MarkMessage, SqlStatement, StatementValidTypeEnum } from '@/typings/sqlParser';
 import { setModelMarkers } from '../../core/setModelMarkers';
+import { findSqlParameters } from '@/utils/sql/sqlParameters';
 import { onHoverEditor } from '../../core/registerHoverProvider';
 import { EditorSetValueType, EditorSettings, SQLOptType } from '../../type';
 import { findNearestSQL, findSqlStatement } from '../../helper/utils';
@@ -893,7 +894,15 @@ const SQLEditor = forwardRef<SQLEditorRef, SQLEditorProps>(
         const model = editor.getModel();
         if (!model) return;
 
-        const syntaxMarkers = toArray(markMessageListRef.current);
+        const parameterRanges = findSqlParameters(model.getValue()).flatMap((parameter) =>
+          model.findMatches(`:${parameter.key}`, false, false, false, null, true).map(({ range }) => range),
+        );
+        const syntaxMarkers = toArray(markMessageListRef.current).filter((marker) =>
+          !parameterRanges.some((range) =>
+            marker.startLineNum <= range.endLineNumber && marker.endLineNum >= range.startLineNumber &&
+            marker.startColNum <= range.endColumn && marker.endColNum >= range.startColumn,
+          ),
+        );
         const insertValueMismatchMarkers = toArray(
           getInsertValueMismatchMarkersWithMessage(sqlStatementListRef.current || [], (expectedCount, actualCount) =>
             expectedCount !== undefined && actualCount !== undefined

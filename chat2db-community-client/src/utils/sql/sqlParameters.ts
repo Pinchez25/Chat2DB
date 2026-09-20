@@ -42,6 +42,11 @@ interface SqlParameterOccurrence {
   key: string;
 }
 
+export interface ProtectedSqlParameters {
+  sql: string;
+  restore: (formattedSql: string) => string;
+}
+
 type ResolvedOptions = Required<SqlParameterOptions>;
 
 const POSITIONAL_PREFIX = '?';
@@ -99,6 +104,38 @@ export function materializeSqlParameters(
   }
   parts.push(sql.slice(offset));
   return parts.join('');
+}
+
+/** Protect editor parameters from a formatter that does not understand `:name` syntax. */
+export function protectSqlParametersForFormatting(
+  sql: string,
+  options?: SqlParameterOptions,
+): ProtectedSqlParameters {
+  const occurrences = scanSqlParameters(sql, resolveOptions(options));
+  if (!occurrences.length) {
+    return { sql, restore: (formattedSql) => formattedSql };
+  }
+
+  const placeholders = occurrences.map((occurrence, index) => ({
+    token: `__CHAT2DB_SQL_PARAMETER_${index}__`,
+    value: sql.slice(occurrence.start, occurrence.end),
+  }));
+  const parts: string[] = [];
+  let offset = 0;
+  occurrences.forEach((occurrence, index) => {
+    parts.push(sql.slice(offset, occurrence.start), placeholders[index].token);
+    offset = occurrence.end;
+  });
+  parts.push(sql.slice(offset));
+
+  return {
+    sql: parts.join(''),
+    restore: (formattedSql) =>
+      formattedSql.replace(/__CHAT2DB_SQL_PARAMETER_(\d+)__/g, (token, index) => {
+        const placeholder = placeholders[Number(index)];
+        return placeholder ? placeholder.value : token;
+      }),
+  };
 }
 
 function resolveOptions(options: SqlParameterOptions = {}): ResolvedOptions {

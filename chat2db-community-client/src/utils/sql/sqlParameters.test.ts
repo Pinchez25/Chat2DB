@@ -5,6 +5,7 @@ import {
   findSqlParameters,
   materializeSqlParameters,
   MissingSqlParameterError,
+  protectSqlParametersForFormatting,
   type SqlParameterOptions,
 } from './sqlParameters';
 
@@ -119,5 +120,17 @@ describe('materializeSqlParameters', () => {
 
   it('rejects NUL characters in string values', () => {
     assert.throws(() => fill(':a', { a: 'x\u0000y' }), RangeError);
+  });
+});
+
+describe('protectSqlParametersForFormatting', () => {
+  it('restores named and positional parameters after formatting', () => {
+    const protectedSql = protectSqlParametersForFormatting('SELECT :id, ?, :id');
+    assert.match(protectedSql.sql, /__CHAT2DB_SQL_PARAMETER_0__/);
+    assert.doesNotMatch(protectedSql.sql, /:id|\?/);
+    assert.equal(
+      protectedSql.restore(protectedSql.sql.replace(/\s*,\s*/g, ',\n')),
+      'SELECT :id,\n?,\n:id',
+    );
   });
 });

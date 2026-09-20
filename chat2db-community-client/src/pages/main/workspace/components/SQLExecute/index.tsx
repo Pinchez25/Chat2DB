@@ -232,7 +232,7 @@ const SqlParameterPromptForm = ({
   );
 };
 
-async function promptForSqlParameters(sql: string): Promise<string> {
+async function promptForSqlParameters(sql: string, modalClassName?: string): Promise<string> {
   const parameters = buildSqlParameterPrompts(sql);
   if (!parameters.length) {
     return sql;
@@ -243,6 +243,7 @@ async function promptForSqlParameters(sql: string): Promise<string> {
     Modal.confirm({
       title: 'SQL Parameter Input',
       width: 420,
+      className: modalClassName,
       okText: i18n('common.button.affirm'),
       cancelText: i18n('common.button.cancel'),
       content: <SqlParameterPromptForm parameters={parameters} onReady={(nextForm) => (form = nextForm)} />,
@@ -930,7 +931,7 @@ const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) 
 
     let sql = requestParams.sql;
     try {
-      sql = await promptForSqlParameters(requestParams.sql);
+      sql = await promptForSqlParameters(requestParams.sql, styles.sqlParameterModal);
     } catch {
       return Promise.resolve();
     }

@@ -55,5 +55,24 @@ export const useStyles = createStyles(({ css, token }) => {
         color: ${token.colorPrimaryHover};
       }
     `,
+    sqlParameterModal: css`
+      .ant-modal-content,
+      .ant-modal-header {
+        background: ${token.colorBgElevated};
+        color: ${token.colorText};
+      }
+
+      .ant-modal-header {
+        border-bottom-color: ${token.colorBorderSecondary};
+      }
+
+      .ant-modal-close {
+        color: ${token.colorTextSecondary};
+      }
+
+      .ant-form-item-label > label {
+        color: ${token.colorText};
+      }
+    `,
   };
 });
