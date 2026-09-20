@@ -6,6 +6,7 @@ on:
       - QQ comment and review event collector
     types:
       - completed
+  workflow_dispatch:
 
 permissions:
   actions: read

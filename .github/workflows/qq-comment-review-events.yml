@@ -16,6 +16,7 @@ on:
       - created
       - edited
       - deleted
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -42,7 +42,7 @@ import {
   IManageResultData,
   IExecuteSqlParams,
 } from '@/typings';
-import { Spin } from 'antd';
+import { Form, Input, Modal, Spin } from 'antd';
 import { useStyles } from './style';
 import { useUpdateEffect } from 'ahooks';
 import SplitPane from 'react-split-pane';
@@ -108,6 +108,7 @@ import {
 import { isDesktop } from '@/utils/env';
 import { v4 as uuidv4 } from 'uuid';
 import { buildStreamResultExecuteSqlParams } from './streamResultExecutionParams';
+import { buildSqlParameterPrompts, materializeSqlParameters } from '@/utils/sql/sqlParameters';
 
 const SplitPaneAny = SplitPane as any;
 const HISTORY_BATCH_LIMIT = 30;
@@ -200,6 +201,66 @@ function getExecutionLogContext(boundInfo: IBoundInfo | DataSourceExecutionSnaps
     databaseName: boundInfo.databaseName,
     schemaName: boundInfo.schemaName,
   };
+}
+
+const SqlParameterPromptForm = ({
+  parameters,
+  onReady,
+}: {
+  parameters: ReturnType<typeof buildSqlParameterPrompts>;
+  onReady: (form: any) => void;
+}) => {
+  const [form] = Form.useForm();
+
+  useEffect(() => {
+    onReady(form);
+  }, [form, onReady]);
+
+  return (
+    <Form form={form} layout="vertical" initialValues={Object.fromEntries(parameters.map((param) => [param.key, '']))}>
+      {parameters.map((param) => (
+        <Form.Item
+          key={param.key}
+          name={param.key}
+          label={param.label}
+          rules={[{ required: true, message: `${param.label} is required` }]}
+        >
+          <Input autoFocus allowClear placeholder={param.label} />
+        </Form.Item>
+      ))}
+    </Form>
+  );
+};
+
+async function promptForSqlParameters(sql: string): Promise<string> {
+  const parameters = buildSqlParameterPrompts(sql);
+  if (!parameters.length) {
+    return sql;
+  }
+
+  return new Promise((resolve, reject) => {
+    let form: any;
+    Modal.confirm({
+      title: 'SQL Parameter Input',
+      width: 420,
+      okText: i18n('common.button.affirm'),
+      cancelText: i18n('common.button.cancel'),
+      content: <SqlParameterPromptForm parameters={parameters} onReady={(nextForm) => (form = nextForm)} />,
+      onOk: async () => {
+        try {
+          const values = await form.validateFields();
+          const valueMap = new Map<string, string>();
+          for (const parameter of parameters) {
+            valueMap.set(parameter.key, String(values[parameter.key] ?? ''));
+          }
+          resolve(materializeSqlParameters(sql, valueMap));
+        } catch (error) {
+          reject(error);
+        }
+      },
+      onCancel: () => reject(new Error('SQL parameter input cancelled')),
+    });
+  });
 }
 
 const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) => {
@@ -826,8 +887,8 @@ const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) 
       const latestWorkspaceBoundInfo =
         type === WorkspaceTabType.LocalSQLFile
           ? useWorkspaceStore
-              .getState()
-              .workspaceTabList?.find((tab) => tab.id === currentBoundInfo.workspaceTabId)?.uniqueData
+            .getState()
+            .workspaceTabList?.find((tab) => tab.id === currentBoundInfo.workspaceTabId)?.uniqueData
           : undefined;
       const nextBoundInfo = mergeLatestLocalFileBoundInfo(
         currentBoundInfo,
@@ -837,13 +898,13 @@ const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) 
       return newBoundInfo.databaseType === undefined
         ? nextBoundInfo
         : {
-            ...nextBoundInfo,
-            ...getDatabaseSupport(nextBoundInfo.databaseType),
-          };
+          ...nextBoundInfo,
+          ...getDatabaseSupport(nextBoundInfo.databaseType),
+        };
     });
   };
 
-  const handleExecuteSQL = (params: IConsoleReturnExecuteSql | SQLExecutionInvocation): Promise<any> => {
+  const handleExecuteSQL = async (params: IConsoleReturnExecuteSql | SQLExecutionInvocation): Promise<any> => {
     const {
       executionTarget: invocationTarget,
       dataSourceState: invocationDataSourceState,
@@ -867,6 +928,13 @@ const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) 
       return Promise.resolve();
     }
 
+    let sql = requestParams.sql;
+    try {
+      sql = await promptForSqlParameters(requestParams.sql);
+    } catch {
+      return Promise.resolve();
+    }
+
     if (!boxRightConsoleHeight) {
       setBoxRightConsoleHeight('50%');
     }
@@ -884,9 +952,9 @@ const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) 
       executionSnapshot.dataSourceId === undefined
         ? undefined
         : getDataSourceRuntimeAvailabilityGeneration(
-            useTreeStore.getState().runtimeAvailabilityGenerationByDataSourceId,
-            executionSnapshot.dataSourceId,
-          );
+          useTreeStore.getState().runtimeAvailabilityGenerationByDataSourceId,
+          executionSnapshot.dataSourceId,
+        );
     if (availabilityGeneration !== undefined) {
       availabilityGenerationByExecutionSequenceRef.current.set(executionSequence, availabilityGeneration);
     }
@@ -896,6 +964,7 @@ const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) 
 
     const executeSqlParams = {
       ...requestParams,
+      sql,
       databaseType: executionSnapshot.databaseType,
       dataSourceId: executionSnapshot.dataSourceId,
       dataSourceName: executionSnapshot.dataSourceName,
@@ -910,6 +979,7 @@ const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) 
       desktopExecutionCallbackBySequenceRef.current[executionSequence] = {
         databaseInfo: {
           ...requestParams,
+          sql,
           dataSourceId: executionSnapshot.dataSourceId,
           dataSourceName: executionSnapshot.dataSourceName,
           databaseType: executionSnapshot.databaseType,
@@ -927,7 +997,7 @@ const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) 
         beginWebSqlExecution(prepareSqlExecutionLogForExecution(state, webExecutionId, keepExistingOutput), {
           executionId: webExecutionId,
           executionSequence,
-          sql: requestParams.sql,
+          sql,
           context: executionLogContext,
         }),
       );
@@ -953,7 +1023,7 @@ const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) 
           return;
         }
         const _resultDataList = processResultDataList(res, executeSqlParams).map((item, index) => {
-          const sql = item.originalSql || requestParams.sql;
+          const resultSql = item.originalSql || requestParams.sql;
           const statementSequence = item.statementSequence ?? (Number(item.extra?.statementSequence) || index + 1);
           const resultSequence = Number(item.extra?.streamResultId) || index + 1;
           const executionId = webExecutionId || `legacy-${executionSequence}`;
@@ -972,7 +1042,7 @@ const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) 
               executionSequence: displayBatchSequence,
               statementSequence,
               resultSequence: item.resultSetId || resultSequence,
-              sql,
+              sql: resultSql,
             }),
           };
         });

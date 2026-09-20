@@ -1,0 +1,86 @@
+name: Build Community Desktop Test Artifacts
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Branch, tag, or commit to build
+        required: true
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: community-desktop-main-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.artifact_name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: win
+            artifact_name: windows
+          - os: ubuntu-22.04
+            target: linux
+            artifact_name: linux-amd64-deb
+
+    runs-on: ${{ matrix.os }}
+    env:
+      COMMUNITY_SOURCE_DIR: ${{ github.workspace }}
+      VERSION: 0.0.1
+      COMMUNITY_RELEASE_EPOCH: 0
+      COMMUNITY_UPDATE_KEY_ID: ${{ secrets.COMMUNITY_UPDATE_KEY_ID }}
+      COMMUNITY_UPDATE_PUBLIC_KEY_B64: ${{ secrets.COMMUNITY_UPDATE_PUBLIC_KEY_B64 }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.sha }}
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.22.2'
+          cache: yarn
+          cache-dependency-path: chat2db-community-client/yarn.lock
+
+      - name: Install Linux packaging dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y fakeroot rpm desktop-file-utils file curl zip
+
+      - name: Build desktop package
+        shell: bash
+        run: bash script/package/package-community-jcef.sh "${VERSION}" "${{ matrix.target }}"
+
+      - name: Upload Windows installer
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: chat2db-community-${{ env.VERSION }}-${{ matrix.artifact_name }}
+          if-no-files-found: error
+          path: jpackage/output/*.msi
+
+      - name: Upload Debian package
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: chat2db-community-${{ env.VERSION }}-${{ matrix.artifact_name }}
+          if-no-files-found: error
+          path: jpackage/output/*.deb

@@ -773,27 +773,12 @@ jobs:
           gh release view "${TAG_NAME}" --json assets --jq '.assets[].name' | sort > actual-assets.txt
           diff -u expected-assets.txt actual-assets.txt
 
-  docker:
-    name: Publish Docker image
-    needs:
-      - resolve
-      - stage_release
-    if: ${{ needs.resolve.outputs.publish == 'true' }}
-    uses: ./.github/workflows/pushdocker.yml
-    with:
-      version: ${{ needs.resolve.outputs.version }}
-      push_latest: true
-    secrets:
-      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-
   publish_release:
     name: Publish GitHub Release
     needs:
       - resolve
       - stage_release
-      - docker
-    if: ${{ always() && needs.stage_release.result == 'success' && needs.resolve.outputs.create_release == 'true' && (needs.resolve.outputs.channel == 'beta' || needs.docker.result == 'success') }}
+    if: ${{ needs.stage_release.result == 'success' && needs.resolve.outputs.create_release == 'true' }}
     environment: ${{ needs.resolve.outputs.channel == 'release' && 'community-release' || 'community-beta-signing' }}
     runs-on: ubuntu-latest
     permissions:

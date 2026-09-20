@@ -17,6 +17,17 @@ on:
         required: true
       DOCKERHUB_TOKEN:
         required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Image version, e.g. 5.3.0
+        required: true
+        type: string
+      push_latest:
+        description: Also update the latest tag
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read

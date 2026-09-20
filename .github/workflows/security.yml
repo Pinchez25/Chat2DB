@@ -1,8 +1,6 @@
 name: Security and supply chain checks
 
 on:
-  push:
-    branches: [main]
   pull_request:
   schedule:
     - cron: '23 3 * * 1'
